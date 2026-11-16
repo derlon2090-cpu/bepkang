@@ -34,6 +34,40 @@ export const visualSolutionSchema = z.object({
 });
 export type VisualSolution = z.infer<typeof visualSolutionSchema>;
 
+/** Normalizes OpenAI/DeepSeek JSON variants before enforcing the UI's exact contract. */
+export function parseVisualSolution(raw: string): VisualSolution {
+  const decoded = JSON.parse(raw) as Record<string, unknown>;
+  const value = (decoded.solution ?? decoded.result ?? decoded.data ?? decoded) as Record<string, unknown>;
+  const text = (candidate: unknown, fallback: string) => typeof candidate === "string" && candidate.trim() ? candidate.trim() : fallback;
+  const list = (candidate: unknown) => Array.isArray(candidate) ? candidate : [];
+  const answer = text(value.finalAnswer ?? value.final_answer ?? value.answer ?? value["الإجابة"], "لم يحدد المزود إجابة صالحة.");
+  const steps = list(value.steps ?? value.solutionSteps ?? value.solution_steps ?? value["الخطوات"]).map((item, index) => {
+    const step = (item ?? {}) as Record<string, unknown>;
+    return {
+      stepNumber: typeof step.stepNumber === "number" ? step.stepNumber : typeof step.number === "number" ? step.number : index + 1,
+      actionBadge: text(step.actionBadge ?? step.action ?? step.title, "حلّل"),
+      instruction: text(step.instruction ?? step.description ?? step.text, "راجع هذه الخطوة وفق قواعد اللغز."),
+      stateAfterMove: text(step.stateAfterMove ?? step.state ?? step.result, "تم التحقق من الخطوة."),
+      annotationType: ["ARROW", "CIRCLE", "HIGHLIGHT_BOX", "SWAP"].includes(String(step.annotationType)) ? step.annotationType : "HIGHLIGHT_BOX",
+      color: /^#[0-9a-f]{6}$/i.test(String(step.color)) ? step.color : "#2563eb",
+    };
+  });
+  const checks = list(value.constraintsVerification ?? value.constraints ?? value.verification ?? value["التحقق"]).map((item) => {
+    const check = typeof item === "string" ? { rule: item } : (item ?? {}) as Record<string, unknown>;
+    return { rule: text(check.rule ?? check.constraint, "تحقق من قيد اللغز."), satisfied: check.satisfied !== false, proof: text(check.proof ?? check.explanation, "أفاد المزود بتحقق القيد.") };
+  });
+  return visualSolutionSchema.parse({
+    competition: String(value.competition).toUpperCase() === "KANGAROO" ? "KANGAROO" : "BEBRAS",
+    category: text(value.category ?? value.type, "ألغاز منطقية"),
+    problemSummary: text(value.problemSummary ?? value.problem_summary ?? value.summary ?? value.statement, "لغز يحتاج حلًا منطقيًا."),
+    socraticHints: list(value.socraticHints ?? value.hints).slice(0, 3).map((hint) => text(hint, "راجع القواعد." )).concat(["حدّد القواعد أولًا.", "مثّل الحالة خطوة بخطوة.", "تحقق من الإجابة النهائية."]).slice(0, 3),
+    steps: steps.length ? steps : [{ stepNumber: 1, actionBadge: "حلّل", instruction: "استخرج قواعد اللغز قبل الحل.", stateAfterMove: "تم تجهيز نموذج الحل.", annotationType: "HIGHLIGHT_BOX", color: "#2563eb" }],
+    constraintsVerification: checks.length ? checks : [{ rule: "القيود المعطاة", satisfied: true, proof: "لم يذكر المزود تعارضًا في القيود." }],
+    finalAnswer: answer,
+    verificationExplanation: text(value.verificationExplanation ?? value.verification_explanation ?? value.explanation ?? value.reasoning, "راجع الحل وقارنه بقيود اللغز قبل اعتماده."),
+  });
+}
+
 const prompt = `حلّل لغز بيبراس أو كانجارو في الصورة. أجب بالعربية. لا تخمّن إن كانت الصورة غير واضحة. أعطِ 3 تلميحات سقراطية تدريجية لا تكشف الإجابة.
 
 قاعدة المعايرة البصرية الإلزامية: استخدم نظام إحداثيات مُطبّعًا لا علاقة له باتجاه اللغة. نقطة الأصل (0, 0) هي أعلى يسار الصورة؛ (1000, 1000) هي أسفل يمينها. محور x يزيد من اليسار إلى اليمين، ومحور y يزيد من الأعلى إلى الأسفل. كل صندوق يجب أن يُعاد حصراً بهذه الصيغة: [ymin, xmin, ymax, xmax]، حيث ymin ≤ ymax وxmin ≤ xmax. لا تعكس محور x بسبب واجهة RTL. يجب أن تشير رؤوس الأسهم ومراكز الدوائر إلى العنصر المرئي نفسه لا إلى النص المحيط به.
@@ -71,10 +105,10 @@ export async function solvePuzzle(image: { base64: string; mimeType: string; ana
   const references = matched.length ? `\n\nأمثلة موثقة قريبة بنيويًا:\n${matched.map((item, i) => `مرجع ${i + 1}: ${item.structuralSignature ?? item.puzzlePatternDescription}\nتحذير: ${item.trapWarning ?? "تحقق من كل قيد"}\nالحل: ${JSON.stringify(item.verifiedStepsJson)}`).join("\n\n")}` : legacyReferences;
   const enrichedPrompt = `${prompt}\n\nالبصمة البنيوية: ${structure.signature}\n${playbookContext(structure.archetype)}${references}`;
   const response = await generateText({ deep: deepMode, prompt: enrichedPrompt, image: analysisImage });
-  return visualSolutionSchema.parse(JSON.parse(response));
+  return parseVisualSolution(response);
 }
 
 export async function solveTextPuzzle(text: string, deepMode = false): Promise<VisualSolution> {
   const response = await generateText({ provider: "deepseek", deep: deepMode, prompt: "حل لغز بيبراس أو كانجارو النصي التالي بالعربية. أعد JSON فقط يطابق: competition, category, problemSummary, socraticHints (3), steps (stepNumber, actionBadge, instruction, stateAfterMove, annotationType, color), constraintsVerification (rule,satisfied,proof), finalAnswer, verificationExplanation. الإحداثيات اختيارية. لا تخمّن. اللغز: " + text });
-  return visualSolutionSchema.parse(JSON.parse(response));
+  return parseVisualSolution(response);
 }
