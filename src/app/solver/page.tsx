@@ -1,54 +1,19 @@
 "use client";
-
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ImageUploader } from "@/components/solver/ImageUploader";
-import { SolutionModes } from "@/components/solver/SolutionModes";
 import { VisualPuzzleCanvas } from "@/components/solver/VisualPuzzleCanvas";
 import type { VisualSolution } from "@/lib/ai/gemini-solver";
-
-type Result = { image: { base64: string; mimeType: string; width: number; height: number }; solution: VisualSolution };
-
+type Result = { image: { base64: string; mimeType: string; width: number; height: number }; solution: VisualSolution }; type Message = { role: "user" | "assistant"; content: string };
+const quickPrompts = ["لماذا هذا الحل صحيح؟", "اشرح لي باختصار شديد", "تحقق من وجود حل أقصر"];
 export default function SolverPage() {
-  const [result, setResult] = useState<Result>();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [step, setStep] = useState(0);
-
-  async function upload(file: File) {
-    setBusy(true); setError(""); setResult(undefined); setStep(0);
-    try {
-      const data = new FormData(); data.append("image", file);
-      const response = await fetch("/api/solve", { method: "POST", body: data });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error);
-      setResult(payload);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "تعذر رفع الصورة.");
-    } finally { setBusy(false); }
-  }
-
+  const [result, setResult] = useState<Result>(); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [step, setStep] = useState(0); const [tab, setTab] = useState<"steps" | "chat">("steps"); const [messages, setMessages] = useState<Message[]>([]); const [question, setQuestion] = useState(""); const [chatBusy, setChatBusy] = useState(false); const uploadInput = useRef<HTMLInputElement>(null); const cameraInput = useRef<HTMLInputElement>(null);
+  async function upload(file: File) { setBusy(true); setError(""); setResult(undefined); setStep(0); setMessages([]); try { const data = new FormData(); data.append("image", file); const response = await fetch("/api/solve", { method: "POST", body: data }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error); setResult(payload); } catch (e) { setError(e instanceof Error ? e.message : "تعذر رفع الصورة."); } finally { setBusy(false); } }
+  async function pasteImage() { try { const items = await navigator.clipboard.read(); for (const item of items) { const type = item.types.find((value) => value.startsWith("image/")); if (type) { const blob = await item.getType(type); return upload(new File([blob], "clipboard.png", { type })); } } setError("انسخ صورة أولًا ثم اضغط Ctrl + V."); } catch { setError("اضغط Ctrl + V للصق الصورة مباشرة داخل الصفحة."); } }
+  function reset() { setResult(undefined); setError(""); setStep(0); setMessages([]); setQuestion(""); }
+  async function ask(text = question) { if (!result || !text.trim() || chatBusy) return; const user: Message = { role: "user", content: text.trim() }; const history = [...messages, user]; setMessages(history); setQuestion(""); setChatBusy(true); try { const response = await fetch("/api/solve/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: { base64: result.image.base64, mimeType: result.image.mimeType }, solution: result.solution, history: messages, question: user.content }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error); setMessages([...history, { role: "assistant", content: payload.answer }]); } catch (e) { setMessages([...history, { role: "assistant", content: e instanceof Error ? e.message : "تعذر الرد الآن." }]); } finally { setChatBusy(false); } }
   const imageSrc = result ? `data:${result.image.mimeType};base64,${result.image.base64}` : "";
-  return <main className="shell">
-    <nav className="nav"><a className="brand" href="/solver">بِبراس <b>× كانجارو</b></a><div className="nav-links"><a className="active" href="/solver">المحلل البصري الفوري</a><a href="/admin/train-model">تدريب النموذج</a><a href="/admin/codes">أكواد الدخول</a></div></nav>
-    <section className="hero solver-hero"><span className="eyebrow">جاهز للاختبار · حل بصري سريع</span><h1>الصق السؤال. شاهد الحل يتحرك فوقه.</h1><p>لقطة شاشة واحدة تكفي: نفهم اللغز ونبني لك عرضًا مرئيًا قصيرًا، خطوة بخطوة.</p></section>
-    <div className="workspace">
-      <section className="card panel">
-        {result && <div className="final-answer"><span>الإجابة النهائية</span><strong>{result.solution.finalAnswer}</strong><p>{result.solution.verificationExplanation}</p></div>}
-        <ImageUploader onImage={upload} busy={busy} />
-        {error && <div className="error">{error}</div>}
-        {result && <div className="preview"><VisualPuzzleCanvas imageSrc={imageSrc} width={result.image.width} height={result.image.height} steps={result.solution.steps} selectedStep={step} onSelectStep={setStep} /></div>}
-      </section>
-      <aside className="card panel">
-        {result ? <>
-          <section className="constraints-card" aria-label="تقرير التحقق من شروط اللغز">
-            <span className="eyebrow">تم التحقق</span><h2>تقرير التحقق من شروط اللغز</h2>
-            <ul>{result.solution.constraintsVerification.map((check, index) => <li key={`${check.rule}-${index}`}><span className="verified-check" aria-hidden="true">✓</span><div><b>{check.rule}</b><p>{check.proof}</p></div></li>)}</ul>
-          </section>
-          <SolutionModes solution={result.solution} onStep={setStep} />
-        </> : <>
-          <span className="eyebrow">مسار من لقطة إلى إجابة</span><h2 style={{ marginTop: 10 }}>مصمم للحظات الاختبار.</h2><p style={{ color: "#aab7c9", lineHeight: 1.8 }}>الصق مباشرة بـ Ctrl + V، أو اسحب الصورة، أو التقطها بالكاميرا. نضبط الصورة ثم نرسم طبقة حل متزامنة فوقها.</p><div className="speed-note"><b>أقل من خطوة واحدة</b><span>التقط ← الصق ← شاهد الحل</span></div>
-        </>}
-      </aside>
-    </div>
-  </main>;
+  return <main className="shell solver-shell"><section className="solver-heading"><span className="eyebrow">محلل بصري ذكي</span><h1>حل واضح، خطوة بخطوة.</h1><p>ارفع اللغز وشاهد الشرح فوق الصورة، ثم ناقش كل خطوة مع المساعد.</p></section><div className="solver-workspace">
+    <section className="visual-stage card"><div className="stage-toolbar"><button onClick={pasteImage}>▣ لصق صورة <kbd>Ctrl+V</kbd></button><button onClick={() => uploadInput.current?.click()}>↑ رفع صورة</button><button onClick={() => cameraInput.current?.click()}>◉ تصوير بالكاميرا</button><button className="danger-action" onClick={reset}>× لغز جديد</button><input ref={uploadInput} hidden type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} /><input ref={cameraInput} hidden type="file" accept="image/*" capture="environment" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} /></div><div className="stage-body">{!result ? <ImageUploader onImage={upload} busy={busy} /> : <VisualPuzzleCanvas imageSrc={imageSrc} width={result.image.width} height={result.image.height} steps={result.solution.steps} selectedStep={step} onSelectStep={setStep} />}{error && <div className="error">{error}</div>}</div></section>
+    <aside className="analysis-panel">{result ? <><section className="answer-card"><div><span>الإجابة النهائية</span><strong>{result.solution.finalAnswer}</strong></div><button onClick={() => navigator.clipboard.writeText(result.solution.finalAnswer)}>نسخ الإجابة</button><p>{result.solution.verificationExplanation}</p></section><details className="verification-bar" open><summary>✓ تم التحقق من {result.solution.constraintsVerification.length} شروط</summary><ul>{result.solution.constraintsVerification.map((item, i) => <li key={i}><span>✓</span><div><b>{item.rule}</b><small>{item.proof}</small></div></li>)}</ul></details><section className="analytical-card card"><div className="panel-tabs"><button className={tab === "steps" ? "active" : ""} onClick={() => setTab("steps")}>الخطوات التفصيلية</button><button className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}>الشات التحليلي</button></div>{tab === "steps" ? <div className="step-cards">{result.solution.steps.map((item, i) => <button key={item.stepNumber} className={step === i + 1 ? "active" : ""} onClick={() => setStep(i + 1)}><span>{item.stepNumber}</span><div><b>{item.instruction}</b><small>{item.stateAfterMove}</small></div></button>)}</div> : <div className="chat-panel"><div className="quick-prompts">{quickPrompts.map((prompt) => <button key={prompt} onClick={() => ask(prompt)}>{prompt}</button>)}</div><div className="chat-messages">{messages.length === 0 && <p>اسألني عن سبب أي حركة أو اطلب شرح خطوة محددة.</p>}{messages.map((message, i) => <div key={i} className={`message ${message.role}`}>{message.content}</div>)}{chatBusy && <div className="message assistant">أفكّر في اللغز…</div>}</div><form onSubmit={(e) => { e.preventDefault(); ask(); }} className="chat-input"><textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="اسأل عن الحل أو أي خطوة…" /><button disabled={chatBusy || !question.trim()}>إرسال</button></form></div>}</section></> : <section className="empty-analysis card"><div className="empty-icon">◇</div><h2>سيظهر التحليل هنا</h2><p>بعد رفع الصورة ستجد الإجابة، تحقق الشروط، الخطوات التفصيلية والشات في لوحة واحدة مرتبة.</p></section>}</aside>
+  </div></main>;
 }

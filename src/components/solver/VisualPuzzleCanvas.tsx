@@ -17,6 +17,7 @@ export function VisualPuzzleCanvas({ imageSrc, width, height, steps, selectedSte
   const [activeStep, setActiveStep] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState<1 | 1.5>(1);
+  const [overlayVisible, setOverlayVisible] = useState(true);
   const setStep = useCallback((next: number) => { const clamped = Math.max(0, Math.min(next, steps.length)); setActiveStep(clamped); onSelectStep?.(clamped); }, [onSelectStep, steps.length]);
   useEffect(() => { setActiveStep(0); setPlaying(true); }, [steps]);
   useEffect(() => {
@@ -32,7 +33,7 @@ export function VisualPuzzleCanvas({ imageSrc, width, height, steps, selectedSte
   return <div className="player">
     <div className="canvas" style={{ aspectRatio: `${width} / ${height}` }}>
     <img src={imageSrc} width={width} height={height} alt="اللغز المرفوع" />
-    <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="التوضيحات البصرية للحل">
+    {overlayVisible && <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="التوضيحات البصرية للحل">
       <defs>{[...new Set(steps.map((s) => s.color))].map((color) => <marker key={color} id={`arrow-${color.slice(1)}`} markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L0,8 L9,4 z" fill={color} /></marker>)}</defs>
       {visible.map((step, index) => {
         const isCurrent = index === visible.length - 1;
@@ -46,13 +47,17 @@ export function VisualPuzzleCanvas({ imageSrc, width, height, steps, selectedSte
           <motion.circle animate={isCurrent ? { r: [26, 31, 26] } : { r: 26 }} transition={{ duration: .8, repeat: isCurrent ? Infinity : 0 }} cx={end.x} cy={end.y} fill={step.color} /><text x={end.x} y={end.y + 1} fill="white" textAnchor="middle" dominantBaseline="middle" fontSize="25" fontWeight="700">{step.stepNumber}</text>
         </g>;
       })}
-    </svg>
+    </svg>}
     </div>
     <div className="subtitle" aria-live="polite"><span>{currentStep ? `الخطوة ${currentStep.stepNumber}` : "الاستعداد"}</span><div><strong>{currentStep?.instruction ?? "يبدأ العرض تلقائيًا — شاهد العناصر التي يحددها الحل."}</strong>{currentStep && <small className="state-after-move">الحالة بعد الحركة: {currentStep.stateAfterMove}</small>}</div></div>
     <div className="player-controls">
-      <button className="icon-btn" onClick={() => setPlaying(!playing)}>{playing ? "إيقاف" : "تشغيل"}</button>
-      <button className="icon-btn" onClick={() => { setStep(0); setPlaying(true); }}>إعادة العرض</button>
-      <button className="icon-btn" onClick={() => setSpeed(speed === 1 ? 1.5 : 1)}>{speed}×</button>
+      <button className="icon-btn primary-control" onClick={() => setPlaying(!playing)}>{playing ? "❚❚ إيقاف مؤقت" : "▶ تشغيل"}</button>
+      <button className="icon-btn" disabled={activeStep === 0} onClick={() => { setPlaying(false); setStep(activeStep - 1); }}>الخطوة السابقة</button>
+      <button className="icon-btn" disabled={activeStep === steps.length} onClick={() => { setPlaying(false); setStep(activeStep + 1); }}>الخطوة التالية</button>
+      <button className="icon-btn" onClick={() => { setStep(0); setPlaying(true); }}>↻ إعادة العرض</button>
+      <button className="icon-btn" onClick={() => { setPlaying(false); setStep(steps.length); }}>عرض الكل</button>
+      <button className="icon-btn" onClick={() => setOverlayVisible(!overlayVisible)}>{overlayVisible ? "إخفاء الرسم" : "إظهار الرسم"}</button>
+      <button className="icon-btn" onClick={() => setSpeed(speed === 1 ? 1.5 : 1)}>السرعة {speed}×</button>
       <input className="timeline" aria-label="الانتقال بين خطوات الحل" type="range" min="0" max={steps.length} value={activeStep} onChange={(event) => { setPlaying(false); setStep(Number(event.target.value)); }} />
       <strong className="timeline-label">الخطوة {Math.max(activeStep, 1)} من {steps.length}</strong>
     </div>
