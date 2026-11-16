@@ -14,8 +14,12 @@ function normalizedName(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, 80) : fallback.slice(0, 80);
 }
 
+function canonicalAccessCode(value: string) {
+  return value.trim().toLowerCase().replaceAll("o", "0");
+}
+
 function matchesAccessCode(value: string, secret: string) {
-  const supplied = Buffer.from(value); const expected = Buffer.from(secret);
+  const supplied = Buffer.from(canonicalAccessCode(value)); const expected = Buffer.from(canonicalAccessCode(secret));
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
 
@@ -26,11 +30,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     name: "كود الدخول الخاص",
     credentials: { code: { label: "كود الدخول الخاص", type: "text" } },
     async authorize(credentials) {
-      const code = typeof credentials?.code === "string" ? credentials.code.trim() : "";
+      const suppliedCode = typeof credentials?.code === "string" ? credentials.code : "";
       const configuredCode = process.env.ACCESS_CODE;
       const database = getDb();
       if (!database) throw new AccessCodeError("unavailable");
-      if (!code || !configuredCode || !matchesAccessCode(code, configuredCode)) throw new AccessCodeError("invalid-code");
+      if (!suppliedCode || !configuredCode || !matchesAccessCode(suppliedCode, configuredCode)) throw new AccessCodeError("invalid-code");
+      // From this point onward always use the exact server-side value for DB lookup/provisioning.
+      const code = configuredCode.trim();
       return database.transaction(async (tx) => {
         let [accessCode] = await tx.select().from(accessCodes).where(eq(accessCodes.code, code)).for("update").limit(1);
         // The configured production code must work before any optional seed job has run.
