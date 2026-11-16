@@ -18,7 +18,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   providers: [Credentials({
     name: "كود الدخول الخاص",
-    credentials: { code: { label: "كود الدخول الخاص", type: "text" }, studentName: { label: "اسم الطالب", type: "text" } },
+    credentials: { code: { label: "كود الدخول الخاص", type: "text" } },
     async authorize(credentials) {
       const code = typeof credentials?.code === "string" ? credentials.code.trim().toUpperCase() : "";
       const database = getDb();
@@ -35,7 +35,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return { id: user.id, name: user.name };
         }
         if (accessCode.usedCount >= accessCode.maxUses) throw new AccessCodeError("code-exhausted");
-        const [user] = await tx.insert(users).values({ name: normalizedName(credentials?.studentName, accessCode.label ?? code) }).returning();
+        const [user] = await tx.insert(users).values({ name: normalizedName(undefined, accessCode.label ?? code) }).returning();
         await tx.update(accessCodes).set({ usedCount: sql`${accessCodes.usedCount} + 1`, ...(accessCode.maxUses === 1 ? { boundUserId: user.id } : {}) }).where(eq(accessCodes.id, accessCode.id));
         return { id: user.id, name: user.name };
       });
