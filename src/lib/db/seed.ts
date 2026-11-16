@@ -7,17 +7,17 @@ export const sampleQuestions = [
   ["KANGAROO", "G3_4", "العد المنطقي", "لدى سارة 3 كرات ثم أعطاها أخوها كرتين. كم أصبحت؟", "5"], ["KANGAROO", "G5_6", "الهندسة", "كم ضلعًا لمضلع خماسي؟", "5"], ["KANGAROO", "G7_8", "الأنماط العددية", "ما العدد التالي: 2، 5، 8، 11، ؟", "14"], ["KANGAROO", "G9_10", "التوافقيات", "كم طريقة لاختيار طالبين من أربعة؟", "6"], ["KANGAROO", "G11_12", "الجبر", "إذا كان 2س + 4 = 12، فما س؟", "4"],
 ] as const;
 
-const starterCodes = [{ code: "VIP-2026", label: "كود اختبار VIP", maxUses: 1 }, { code: "STUDENT-01", label: "الطالب 01", maxUses: 1 }, { code: "STUDENT-02", label: "الطالب 02", maxUses: 1 }];
-
 /** Run after db:push. The unique indexes make repeated runs safe. */
 export async function seedDatabase() {
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL مطلوب لتشغيل البذر.");
   await db.insert(questions).values(sampleQuestions.map(([competition, ageGroup, category, prompt, answer]) => ({ competition, ageGroup, category, prompt, answer }))).onConflictDoNothing();
-  await db.insert(accessCodes).values(starterCodes).onConflictDoNothing({ target: accessCodes.code });
+  const code = process.env.ACCESS_CODE;
+  if (!code) throw new Error("ACCESS_CODE مطلوب لتشغيل البذر.");
+  await db.insert(accessCodes).values({ code, label: "كود الدخول الرئيسي", maxUses: 1 }).onConflictDoNothing({ target: accessCodes.code });
   await closeDb();
 }
 
 if (process.argv[1]?.replace(/\\/g, "/").endsWith("src/lib/db/seed.ts")) {
-  seedDatabase().then(() => console.log("تم بذر بنك الأسئلة وأكواد الدخول بنجاح.")).catch((error) => { console.error(error); process.exitCode = 1; });
+  seedDatabase().then(() => console.log("تم بذر بنك الأسئلة وكود الدخول بنجاح.")).catch((error) => { console.error(error); process.exitCode = 1; });
 }
