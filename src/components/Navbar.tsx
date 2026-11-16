@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 
-const links = [["/solver", "المحلل البصري"], ["/admin/train-model", "تدريب النموذج"], ["/admin/codes", "أكواد الدخول"]] as const;
 export function Navbar() {
-  const pathname = usePathname();
+  const pathname = usePathname(); const router = useRouter();
   if (pathname === "/login") return null;
-  return <header className="site-navbar"><div className="navbar-inner"><Link href="/" className="navbar-brand"><span>◆</span> بِبراس × كانجارو</Link><nav>{links.map(([href, label]) => <Link key={href} className={pathname.startsWith(href) ? "active" : ""} href={href}>{label}</Link>)}</nav><button className="logout-btn" onClick={() => signOut({ callbackUrl: "/login" })}>تسجيل الخروج</button></div></header>;
+  const fresh = () => { if (pathname === "/solver") window.dispatchEvent(new Event("new-puzzle")); else router.push("/solver"); };
+  return <header className="site-navbar"><div className="navbar-inner"><Link href="/solver" className="navbar-brand"><span>◆</span> بِبراس × كانجارو</Link><button className="new-chat-btn" onClick={fresh}>＋ محادثة جديدة</button><div className="navbar-spacer" /><span className="user-badge">الطالب</span><button className="logout-btn" onClick={() => signOut({ callbackUrl: "/login" })}>تسجيل الخروج</button></div></header>;
 }
