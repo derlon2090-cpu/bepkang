@@ -3,6 +3,8 @@ import { z } from "zod";
 import { desc } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { referenceExamples } from "@/lib/db/schema";
+import { describeStructure, retrieveReferences } from "./reference-memory";
+import { playbookContext } from "./competition-playbook";
 
 const point = z.object({ x: z.number().min(0).max(1000), y: z.number().min(0).max(1000) });
 const box = z.object({ ymin: z.number().min(0).max(1000), xmin: z.number().min(0).max(1000), ymax: z.number().min(0).max(1000), xmax: z.number().min(0).max(1000) });
@@ -65,8 +67,12 @@ export async function solvePuzzle(image: { base64: string; mimeType: string; ana
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("لم يتم ضبط GEMINI_API_KEY بعد. أضفه إلى ملف .env.local لتفعيل التحليل الحقيقي.");
   const client = new GoogleGenAI({ apiKey: key });
-  const references = await fewShotGuidance();
   const analysisImage = image.analysisImage ?? image;
-  const response = await client.models.generateContent({ model: "gemini-2.5-pro", contents: [{ role: "user", parts: [{ text: `${prompt}${references}` }, { inlineData: { mimeType: analysisImage.mimeType, data: analysisImage.base64 } }] }], config: { tools: [{ codeExecution: {} }], responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(visualSolutionSchema), thinkingConfig: { thinkingBudget: 8192 } } });
+  const structure = await describeStructure(analysisImage);
+  const matched = await retrieveReferences(structure.signature, structure.archetype);
+  const legacyReferences = matched.length ? "" : await fewShotGuidance();
+  const references = matched.length ? `\n\nأمثلة موثقة قريبة بنيويًا:\n${matched.map((item, i) => `مرجع ${i + 1}: ${item.structuralSignature ?? item.puzzlePatternDescription}\nتحذير: ${item.trapWarning ?? "تحقق من كل قيد"}\nالحل: ${JSON.stringify(item.verifiedStepsJson)}`).join("\n\n")}` : legacyReferences;
+  const enrichedPrompt = `${prompt}\n\nالبصمة البنيوية: ${structure.signature}\n${playbookContext(structure.archetype)}${references}`;
+  const response = await client.models.generateContent({ model: "gemini-2.5-pro", contents: [{ role: "user", parts: [{ text: enrichedPrompt }, { inlineData: { mimeType: analysisImage.mimeType, data: analysisImage.base64 } }] }], config: { tools: [{ codeExecution: {} }], responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(visualSolutionSchema), thinkingConfig: { thinkingBudget: 8192 } } });
   return visualSolutionSchema.parse(JSON.parse(response.text ?? "{}"));
 }

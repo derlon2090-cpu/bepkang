@@ -23,6 +23,12 @@ export async function bootstrapDatabase() {
     `CREATE TABLE IF NOT EXISTS skill_mastery (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, category text NOT NULL, attempts_count integer NOT NULL DEFAULT 0, correct_count integer NOT NULL DEFAULT 0, mastery_score real NOT NULL DEFAULT 0, last_practiced_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE UNIQUE INDEX IF NOT EXISTS skill_mastery_user_category_idx ON skill_mastery(user_id, category)`,
     `CREATE TABLE IF NOT EXISTS solved_puzzles_cache (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), image_hash varchar(64) NOT NULL UNIQUE, competition text NOT NULL, age_group text, category text NOT NULL, natural_width integer NOT NULL, natural_height integer NOT NULL, solution_json jsonb NOT NULL, hit_count integer NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now())`,
+    "ALTER TABLE reference_examples ADD COLUMN IF NOT EXISTS archetype varchar(64)",
+    "ALTER TABLE reference_examples ADD COLUMN IF NOT EXISTS structural_signature text",
+    "ALTER TABLE reference_examples ADD COLUMN IF NOT EXISTS trap_warning text",
+    "ALTER TABLE reference_examples ADD COLUMN IF NOT EXISTS image_hash varchar(64)",
+    "ALTER TABLE reference_examples ADD COLUMN IF NOT EXISTS embedding vector(768)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS reference_examples_image_hash_idx ON reference_examples(image_hash)",
   ];
   for (const statement of statements) await db.execute(sql.raw(statement));
   await seedDatabase();

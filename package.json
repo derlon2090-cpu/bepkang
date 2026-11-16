@@ -10,7 +10,8 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx src/lib/db/seed.ts",
     "verify:setup": "tsx scripts/verify-setup.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "train:ingest": "tsx scripts/ingest-archive.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

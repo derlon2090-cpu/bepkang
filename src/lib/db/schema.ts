@@ -49,6 +49,11 @@ export const referenceExamples = pgTable("reference_examples", {
   imageUrl: text("image_url"),
   thumbnailBase64: text("thumbnail_base64"),
   verifiedStepsJson: jsonb("verified_steps_json").$type<VisualSolutionRecord>().notNull(),
+  archetype: varchar("archetype", { length: 64 }),
+  structuralSignature: text("structural_signature"),
+  trapWarning: text("trap_warning"),
+  imageHash: varchar("image_hash", { length: 64 }).unique(),
+  embedding: vector("embedding", { dimensions: 768 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("reference_examples_competition_idx").on(table.competition),
