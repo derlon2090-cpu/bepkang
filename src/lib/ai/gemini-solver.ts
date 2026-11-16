@@ -37,10 +37,19 @@ export type VisualSolution = z.infer<typeof visualSolutionSchema>;
 /** Normalizes OpenAI/DeepSeek JSON variants before enforcing the UI's exact contract. */
 export function parseVisualSolution(raw: string): VisualSolution {
   const decoded = JSON.parse(raw) as Record<string, unknown>;
-  const value = (decoded.solution ?? decoded.result ?? decoded.data ?? decoded) as Record<string, unknown>;
+  const isRecord = (candidate: unknown): candidate is Record<string, unknown> => Boolean(candidate) && typeof candidate === "object" && !Array.isArray(candidate);
+  const hasSolutionFields = (candidate: Record<string, unknown>) => ["finalAnswer", "final_answer", "answer", "الإجابة", "steps", "solutionSteps", "problemSummary", "statement"].some((key) => key in candidate);
+  const findSolution = (candidate: unknown, depth = 0): Record<string, unknown> | null => {
+    if (!isRecord(candidate) || depth > 5) return null;
+    if (hasSolutionFields(candidate)) return candidate;
+    for (const child of Object.values(candidate)) { const found = findSolution(child, depth + 1); if (found) return found; }
+    return null;
+  };
+  const value = findSolution(decoded) ?? decoded;
   const text = (candidate: unknown, fallback: string) => typeof candidate === "string" && candidate.trim() ? candidate.trim() : fallback;
   const list = (candidate: unknown) => Array.isArray(candidate) ? candidate : [];
-  const answer = text(value.finalAnswer ?? value.final_answer ?? value.answer ?? value["الإجابة"], "لم يحدد المزود إجابة صالحة.");
+  const answer = text(value.finalAnswer ?? value.final_answer ?? value.answer ?? value["الإجابة"] ?? value.conclusion, "");
+  if (!answer) throw new Error("أعاد المزود نتيجة بلا إجابة نهائية. حاول إعادة إرسال اللغز بصياغة أوضح.");
   const steps = list(value.steps ?? value.solutionSteps ?? value.solution_steps ?? value["الخطوات"]).map((item, index) => {
     const step = (item ?? {}) as Record<string, unknown>;
     return {
@@ -59,7 +68,7 @@ export function parseVisualSolution(raw: string): VisualSolution {
   return visualSolutionSchema.parse({
     competition: String(value.competition).toUpperCase() === "KANGAROO" ? "KANGAROO" : "BEBRAS",
     category: text(value.category ?? value.type, "ألغاز منطقية"),
-    problemSummary: text(value.problemSummary ?? value.problem_summary ?? value.summary ?? value.statement, "لغز يحتاج حلًا منطقيًا."),
+    problemSummary: text(value.problemSummary ?? value.problem_summary ?? value.summary ?? value.statement, "لغز منطقي"),
     socraticHints: list(value.socraticHints ?? value.hints).slice(0, 3).map((hint) => text(hint, "راجع القواعد." )).concat(["حدّد القواعد أولًا.", "مثّل الحالة خطوة بخطوة.", "تحقق من الإجابة النهائية."]).slice(0, 3),
     steps: steps.length ? steps : [{ stepNumber: 1, actionBadge: "حلّل", instruction: "استخرج قواعد اللغز قبل الحل.", stateAfterMove: "تم تجهيز نموذج الحل.", annotationType: "HIGHLIGHT_BOX", color: "#2563eb" }],
     constraintsVerification: checks.length ? checks : [{ rule: "القيود المعطاة", satisfied: true, proof: "لم يذكر المزود تعارضًا في القيود." }],
@@ -109,6 +118,6 @@ export async function solvePuzzle(image: { base64: string; mimeType: string; ana
 }
 
 export async function solveTextPuzzle(text: string, deepMode = false): Promise<VisualSolution> {
-  const response = await generateText({ provider: "deepseek", deep: deepMode, prompt: "حل لغز بيبراس أو كانجارو النصي التالي بالعربية. أعد JSON فقط يطابق: competition, category, problemSummary, socraticHints (3), steps (stepNumber, actionBadge, instruction, stateAfterMove, annotationType, color), constraintsVerification (rule,satisfied,proof), finalAnswer, verificationExplanation. الإحداثيات اختيارية. لا تخمّن. اللغز: " + text });
+  const response = await generateText({ provider: "deepseek", deep: deepMode, prompt: "حل لغز بيبراس أو كانجارو النصي التالي بالعربية. أعد JSON فقط، بلا Markdown وبالمفاتيح الإنجليزية التالية حرفيًا: {competition:'BEBRAS'|'KANGAROO',category:string,problemSummary:string,socraticHints:[string,string,string],steps:[{stepNumber:number,actionBadge:string,instruction:string,stateAfterMove:string,annotationType:'HIGHLIGHT_BOX',color:'#2563eb'}],constraintsVerification:[{rule:string,satisfied:true,proof:string}],finalAnswer:string,verificationExplanation:string}. لا تستخدم مفاتيح عربية ولا تغلف الناتج في result أو solution. اللغز: " + text });
   return parseVisualSolution(response);
 }
