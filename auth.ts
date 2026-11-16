@@ -32,7 +32,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!database) throw new AccessCodeError("unavailable");
       if (!code || !configuredCode || !matchesAccessCode(code, configuredCode)) throw new AccessCodeError("invalid-code");
       return database.transaction(async (tx) => {
-        const [accessCode] = await tx.select().from(accessCodes).where(eq(accessCodes.code, code)).for("update").limit(1);
+        let [accessCode] = await tx.select().from(accessCodes).where(eq(accessCodes.code, code)).for("update").limit(1);
+        // The configured production code must work before any optional seed job has run.
+        if (!accessCode) {
+          await tx.insert(accessCodes).values({ code, label: "كود الدخول الرئيسي", maxUses: 1 }).onConflictDoNothing({ target: accessCodes.code });
+          [accessCode] = await tx.select().from(accessCodes).where(eq(accessCodes.code, code)).for("update").limit(1);
+        }
         if (!accessCode) throw new AccessCodeError("invalid-code");
         if (!accessCode.isActive) throw new AccessCodeError("inactive-code");
         if (accessCode.expiresAt && accessCode.expiresAt <= new Date()) throw new AccessCodeError("expired-code");
