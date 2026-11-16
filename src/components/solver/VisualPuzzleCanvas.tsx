@@ -18,7 +18,7 @@ export function VisualPuzzleCanvas({ imageSrc, width, height, steps, selectedSte
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState<1 | 1.5>(1);
   const [overlayVisible, setOverlayVisible] = useState(true);
-  const setStep = useCallback((next: number) => { const clamped = Math.max(0, Math.min(next, steps.length)); setActiveStep(clamped); onSelectStep?.(clamped); }, [onSelectStep, steps.length]);
+  const setStep = useCallback((next: number) => { const clamped = Math.max(0, Math.min(next, steps.length)); setActiveStep(clamped); if (typeof onSelectStep === "function") onSelectStep(clamped); }, [onSelectStep, steps.length]);
   useEffect(() => { setActiveStep(0); setPlaying(true); }, [steps]);
   useEffect(() => {
     if (selectedStep !== undefined && selectedStep !== activeStep) setActiveStep(Math.max(0, Math.min(selectedStep, steps.length)));
