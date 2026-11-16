@@ -1,27 +1,23 @@
-import { getDb, closeDb } from ".";
-import { questions } from "./schema";
+import "dotenv/config";
+import { closeDb, getDb } from ".";
+import { accessCodes, questions } from "./schema";
 
 export const sampleQuestions = [
-  ["BEBRAS", "G3_4", "الأنماط", "يكمل الروبوت النمط: أحمر، أزرق، أحمر، أزرق، ؟", "أحمر"],
-  ["BEBRAS", "G5_6", "تتبع الخوارزميات", "يبدأ السهم شرقًا، ينعطف يمينًا مرتين ثم يسير خطوة. إلى أين يشير؟", "غربًا"],
-  ["BEBRAS", "G7_8", "الشبكات", "ما أقل عدد من الوصلات لربط أربع جزر دون عزل أي جزيرة؟", "3 وصلات"],
-  ["BEBRAS", "G9_10", "الترميز", "إذا استبدلنا كل حرف بالحرف التالي، فما ترميز ب؟", "ت"],
-  ["BEBRAS", "G11_12", "الخوارزميات", "أي بنية بيانات تناسب آخر داخل أول خارج؟", "المكدس"],
-  ["KANGAROO", "G3_4", "العد المنطقي", "لدى سارة 3 كرات ثم أعطاها أخوها كرتين. كم أصبحت؟", "5"],
-  ["KANGAROO", "G5_6", "الهندسة", "كم ضلعًا لمضلع خماسي؟", "5"],
-  ["KANGAROO", "G7_8", "الأنماط العددية", "ما العدد التالي: 2، 5، 8، 11، ؟", "14"],
-  ["KANGAROO", "G9_10", "التوافقيات", "كم طريقة لاختيار طالبين من أربعة؟", "6"],
-  ["KANGAROO", "G11_12", "الجبر", "إذا كان 2س + 4 = 12، فما س؟", "4"],
+  ["BEBRAS", "G3_4", "الأنماط", "يكمل الروبوت النمط: أحمر، أزرق، أحمر، أزرق، ؟", "أحمر"], ["BEBRAS", "G5_6", "تتبع الخوارزميات", "يبدأ السهم شرقًا، ينعطف يمينًا مرتين ثم يسير خطوة. إلى أين يشير؟", "غربًا"], ["BEBRAS", "G7_8", "الشبكات", "ما أقل عدد من الوصلات لربط أربع جزر دون عزل أي جزيرة؟", "3 وصلات"], ["BEBRAS", "G9_10", "الترميز", "إذا استبدلنا كل حرف بالحرف التالي، فما ترميز ب؟", "ت"], ["BEBRAS", "G11_12", "الخوارزميات", "أي بنية بيانات تناسب آخر داخل أول خارج؟", "المكدس"],
+  ["KANGAROO", "G3_4", "العد المنطقي", "لدى سارة 3 كرات ثم أعطاها أخوها كرتين. كم أصبحت؟", "5"], ["KANGAROO", "G5_6", "الهندسة", "كم ضلعًا لمضلع خماسي؟", "5"], ["KANGAROO", "G7_8", "الأنماط العددية", "ما العدد التالي: 2، 5، 8، 11، ؟", "14"], ["KANGAROO", "G9_10", "التوافقيات", "كم طريقة لاختيار طالبين من أربعة؟", "6"], ["KANGAROO", "G11_12", "الجبر", "إذا كان 2س + 4 = 12، فما س؟", "4"],
 ] as const;
 
-/** Run from a migration-aware environment after DATABASE_URL is set. Safe to run repeatedly. */
+const starterCodes = [{ code: "VIP-2026", label: "كود اختبار VIP", maxUses: 1 }, { code: "STUDENT-01", label: "الطالب 01", maxUses: 1 }, { code: "STUDENT-02", label: "الطالب 02", maxUses: 1 }];
+
+/** Run after db:push. The unique indexes make repeated runs safe. */
 export async function seedDatabase() {
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL مطلوب لتشغيل البذر.");
   await db.insert(questions).values(sampleQuestions.map(([competition, ageGroup, category, prompt, answer]) => ({ competition, ageGroup, category, prompt, answer }))).onConflictDoNothing();
+  await db.insert(accessCodes).values(starterCodes).onConflictDoNothing({ target: accessCodes.code });
   await closeDb();
 }
 
 if (process.argv[1]?.replace(/\\/g, "/").endsWith("src/lib/db/seed.ts")) {
-  seedDatabase().then(() => console.log("تم بذر بنك الأسئلة بنجاح.")).catch((error) => { console.error(error); process.exitCode = 1; });
+  seedDatabase().then(() => console.log("تم بذر بنك الأسئلة وأكواد الدخول بنجاح.")).catch((error) => { console.error(error); process.exitCode = 1; });
 }

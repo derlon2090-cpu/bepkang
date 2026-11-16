@@ -1,4 +1,22 @@
 "use client";
+
 import { signIn } from "next-auth/react";
 import { useState } from "react";
-export default function LoginPage() { const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [message, setMessage] = useState(""); return <main className="shell"><section className="card panel" style={{ maxWidth: 460, margin: "60px auto" }}><span className="tag">مساحتك التعليمية</span><h1>تسجيل الدخول</h1><p style={{ color: "#69748d" }}>احفظ تقدمك ومؤشر جاهزيتك للمسابقة.</p><div style={{ display: "grid", gap: 10 }}><input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" type="email" /><input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة المرور" type="password" /><button className="btn" onClick={async () => { const result = await signIn("credentials", { email, password, redirect: false }); setMessage(result?.error ? "بيانات الدخول غير صحيحة." : "تم تسجيل الدخول بنجاح."); }}>دخول</button><button className="btn secondary" onClick={() => signIn("google", { callbackUrl: "/" })}>المتابعة عبر Google</button></div>{message && <p className="error">{message}</p>}</section></main>; }
+
+const messages: Record<string, string> = { "invalid-code": "الكود غير صحيح.", "expired-code": "انتهت صلاحية هذا الكود.", "inactive-code": "تم إيقاف هذا الكود.", "code-exhausted": "اكتمل عدد استخدامات هذا الكود.", unavailable: "خدمة الدخول غير متاحة مؤقتًا." };
+
+export default function LoginPage() {
+  const [code, setCode] = useState(""); const [studentName, setStudentName] = useState(""); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); setMessage("");
+    if (!code.trim()) { setMessage("أدخل كود الدخول الخاص."); return; }
+    setBusy(true); const result = await signIn("credentials", { code, studentName, redirect: false }); setBusy(false);
+    if (result?.error) { setMessage(messages[result.code ?? ""] ?? "الكود غير صحيح أو منتهي الصلاحية."); return; }
+    window.location.assign("/");
+  }
+  return <main className="shell"><section className="card panel" style={{ maxWidth: 460, margin: "60px auto" }}>
+    <span className="tag">مساحتك التعليمية الخاصة</span><h1>تسجيل الدخول بكود خاص</h1><p style={{ color: "#69748d", lineHeight: 1.8 }}>أدخل الكود الذي أرسله لك المعلّم. سيُحفظ تقدمك على هذا الحساب.</p>
+    <form onSubmit={submit} style={{ display: "grid", gap: 12 }}><label htmlFor="code">كود الدخول الخاص</label><input id="code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="BEBRAS-7421" autoCapitalize="characters" autoComplete="off" spellCheck={false} dir="ltr" style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", letterSpacing: ".06em" }} /><label htmlFor="studentName">اسم الطالب <small style={{ color: "#69748d" }}>(اختياري عند التفعيل الأول)</small></label><input id="studentName" value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="مثال: أحمد محمد" autoComplete="name" /><button className="btn" disabled={busy} type="submit">{busy ? "جارٍ التحقق…" : "دخول"}</button></form>
+    {message && <p className="error" role="alert">{message}</p>}
+  </section></main>;
+}

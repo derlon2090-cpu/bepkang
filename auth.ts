@@ -1,25 +1,48 @@
-import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { compare } from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { accounts, sessions, users, verificationTokens } from "@/lib/db/schema";
+import { accessCodes, users } from "@/lib/db/schema";
 
-const db = getDb();
+class AccessCodeError extends CredentialsSignin {
+  code: "invalid-code" | "expired-code" | "inactive-code" | "code-exhausted" | "unavailable";
+  constructor(code: AccessCodeError["code"]) { super(); this.code = code; }
+}
+
+function normalizedName(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 80) : fallback.slice(0, 80);
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: db ? DrizzleAdapter(db, { usersTable: users, accountsTable: accounts, sessionsTable: sessions, verificationTokensTable: verificationTokens }) : undefined,
-  session: { strategy: db ? "database" : "jwt" },
-  providers: [
-    ...(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET ? [Google({ clientId: process.env.AUTH_GOOGLE_ID, clientSecret: process.env.AUTH_GOOGLE_SECRET })] : []),
-    Credentials({ name: "البريد الإلكتروني", credentials: { email: { label: "البريد الإلكتروني", type: "email" }, password: { label: "كلمة المرور", type: "password" } }, async authorize(credentials) {
-      const email = typeof credentials?.email === "string" ? credentials.email.toLowerCase() : "";
-      const password = typeof credentials?.password === "string" ? credentials.password : "";
-      const database = getDb(); if (!database || !email || !password) return null;
-      const [user] = await database.select().from(users).where(eq(users.email, email)).limit(1);
-      if (!user?.passwordHash || !await compare(password, user.passwordHash)) return null;
-      return { id: user.id, email: user.email, name: user.name ?? user.displayName, image: user.image };
-    } }),
-  ],
+  trustHost: true,
+  session: { strategy: "jwt" },
+  providers: [Credentials({
+    name: "كود الدخول الخاص",
+    credentials: { code: { label: "كود الدخول الخاص", type: "text" }, studentName: { label: "اسم الطالب", type: "text" } },
+    async authorize(credentials) {
+      const code = typeof credentials?.code === "string" ? credentials.code.trim().toUpperCase() : "";
+      const database = getDb();
+      if (!database) throw new AccessCodeError("unavailable");
+      if (!code) throw new AccessCodeError("invalid-code");
+      return database.transaction(async (tx) => {
+        const [accessCode] = await tx.select().from(accessCodes).where(eq(accessCodes.code, code)).for("update").limit(1);
+        if (!accessCode) throw new AccessCodeError("invalid-code");
+        if (!accessCode.isActive) throw new AccessCodeError("inactive-code");
+        if (accessCode.expiresAt && accessCode.expiresAt <= new Date()) throw new AccessCodeError("expired-code");
+        if (accessCode.maxUses === 1 && accessCode.boundUserId) {
+          const [user] = await tx.select().from(users).where(eq(users.id, accessCode.boundUserId)).limit(1);
+          if (!user) throw new AccessCodeError("invalid-code");
+          return { id: user.id, name: user.name };
+        }
+        if (accessCode.usedCount >= accessCode.maxUses) throw new AccessCodeError("code-exhausted");
+        const [user] = await tx.insert(users).values({ name: normalizedName(credentials?.studentName, accessCode.label ?? code) }).returning();
+        await tx.update(accessCodes).set({ usedCount: sql`${accessCodes.usedCount} + 1`, ...(accessCode.maxUses === 1 ? { boundUserId: user.id } : {}) }).where(eq(accessCodes.id, accessCode.id));
+        return { id: user.id, name: user.name };
+      });
+    },
+  })],
+  callbacks: {
+    jwt({ token, user }) { if (user) { token.id = user.id; token.name = user.name; } return token; },
+    session({ session, token }) { if (session.user) { session.user.id = token.id as string; session.user.name = typeof token.name === "string" ? token.name : null; } return session; },
+  },
 });
