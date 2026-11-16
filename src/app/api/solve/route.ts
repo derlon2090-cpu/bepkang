@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { solvePuzzle, visualSolutionSchema } from "@/lib/ai/gemini-solver";
+import { solvePuzzle, solveTextPuzzle, visualSolutionSchema } from "@/lib/ai/gemini-solver";
 import { getDb } from "@/lib/db";
 import { solvedPuzzlesCache } from "@/lib/db/schema";
 import { normalizePuzzleImage } from "@/lib/image/processor";
@@ -12,7 +12,14 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("image");
-    if (!(file instanceof File) || !file.type.startsWith("image/")) return NextResponse.json({ error: "ارفع ملف صورة صالحًا." }, { status: 400 });
+    const text = String(formData.get("text") ?? "").trim();
+    const deepMode = formData.get("deepMode") === "true";
+    if (!(file instanceof File) && !text) return NextResponse.json({ error: "أرفق صورة أو اكتب لغزًا." }, { status: 400 });
+    if (!(file instanceof File)) {
+      const solution = await solveTextPuzzle(text, deepMode);
+      return NextResponse.json({ image: { base64: "", mimeType: "image/jpeg", width: 1, height: 1 }, solution, cached: false });
+    }
+    if (!file.type.startsWith("image/")) return NextResponse.json({ error: "ارفع ملف صورة صالحًا." }, { status: 400 });
     if (file.size > 4.5 * 1024 * 1024) return NextResponse.json({ error: "حجم الصورة أكبر من 4.5 ميغابايت، يرجى ضغطها ثم المحاولة." }, { status: 413 });
     const normalized = await normalizePuzzleImage(Buffer.from(await file.arrayBuffer()));
     const imageHash = createHash("sha256").update(normalized.buffer).digest("hex");
@@ -30,7 +37,7 @@ export async function POST(request: Request) {
         await db.delete(solvedPuzzlesCache).where(eq(solvedPuzzlesCache.id, cached[0].id));
       }
     } catch (cacheError) { console.warn("Cache lookup unavailable; continuing with Gemini", cacheError); }
-    const solution = await solvePuzzle(normalized);
+    const solution = await solvePuzzle(normalized, deepMode);
     if (db) try {
       await db.insert(solvedPuzzlesCache).values({ imageHash, competition: solution.competition, ageGroup: null, category: solution.category, naturalWidth: normalized.width, naturalHeight: normalized.height, solutionJson: solution }).onConflictDoUpdate({ target: solvedPuzzlesCache.imageHash, set: { competition: solution.competition, category: solution.category, naturalWidth: normalized.width, naturalHeight: normalized.height, solutionJson: solution } });
     } catch (cacheError) { console.warn("Could not persist solution cache", cacheError); }

@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid, varchar, vector } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const AGE_GROUPS = ["G3_4", "G5_6", "G7_8", "G9_10", "G11_12"] as const;
 export type AgeGroup = typeof AGE_GROUPS[number];
@@ -24,7 +24,7 @@ export const accessCodes = pgTable("access_codes", {
 }, (table) => [index("access_codes_active_idx").on(table.isActive)]);
 
 export const questions = pgTable("questions", {
-  id: uuid("id").defaultRandom().primaryKey(), competition: text("competition", { enum: ["BEBRAS", "KANGAROO"] }).notNull(), ageGroup: text("age_group", { enum: AGE_GROUPS }).notNull(), category: text("category").notNull(), prompt: text("prompt").notNull(), answer: text("answer"), imageUrl: text("image_url"), embedding: vector("embedding", { dimensions: 768 }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  id: uuid("id").defaultRandom().primaryKey(), sourceId: varchar("source_id"), competition: text("competition", { enum: ["BEBRAS", "KANGAROO"] }).notNull(), ageGroup: text("age_group", { enum: AGE_GROUPS }).notNull(), category: text("category").notNull(), prompt: text("prompt").notNull(), answer: text("answer"), imageUrl: text("image_url"), embedding: jsonb("embedding").$type<number[]>(), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("questions_category_idx").on(table.category), uniqueIndex("questions_competition_prompt_idx").on(table.competition, table.prompt)]);
 
 export const userAttempts = pgTable("user_attempts", {
@@ -53,7 +53,8 @@ export const referenceExamples = pgTable("reference_examples", {
   structuralSignature: text("structural_signature"),
   trapWarning: text("trap_warning"),
   imageHash: varchar("image_hash", { length: 64 }).unique(),
-  embedding: vector("embedding", { dimensions: 768 }),
+  embedding: jsonb("embedding").$type<number[]>(),
+  sourceType: varchar("source_type", { length: 32 }).default("OWNER_VERIFIED").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("reference_examples_competition_idx").on(table.competition),

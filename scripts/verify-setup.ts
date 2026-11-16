@@ -10,7 +10,7 @@ async function main() {
   const [code] = await db.select({ code: accessCodes.code }).from(accessCodes).limit(1);
   const [question] = await db.select({ id: questions.id }).from(questions).limit(1);
   if (!code || !question) throw new Error("لم تُزرع الأكواد أو الأسئلة بعد.");
-  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY غير مضبوط.");
+  if (!process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY) throw new Error("يلزم ضبط OPENAI_API_KEY أو DEEPSEEK_API_KEY.");
   const input = await sharp({ create: { width: 2, height: 2, channels: 3, background: "#6657e8" } }).png().toBuffer();
   const image = await normalizePuzzleImage(input);
   if (image.mimeType !== "image/webp" || !image.buffer.length) throw new Error("فشل اختبار معالجة الصورة.");

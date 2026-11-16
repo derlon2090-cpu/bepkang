@@ -11,7 +11,9 @@
     "db:seed": "tsx src/lib/db/seed.ts",
     "verify:setup": "tsx scripts/verify-setup.ts",
     "db:studio": "drizzle-kit studio",
-    "train:ingest": "tsx scripts/ingest-archive.ts"
+    "train:ingest": "tsx scripts/ingest-archive.ts",
+    "train:seed-mawhiba": "tsx src/lib/db/seed-mawhiba-bebras.ts",
+    "train:self": "tsx scripts/self-train.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",
@@ -22,6 +24,7 @@
     "framer-motion": "^12.23.12",
     "next": "^16.4.6",
     "next-auth": "^5.0.0-beta.32",
+    "openai": "^7.57.0",
     "postgres": "^3.4.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

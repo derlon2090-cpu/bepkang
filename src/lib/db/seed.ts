@@ -11,10 +11,18 @@ export const sampleQuestions = [
 export async function seedDatabase() {
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL مطلوب لتشغيل البذر.");
-  await db.insert(questions).values(sampleQuestions.map(([competition, ageGroup, category, prompt, answer]) => ({ competition, ageGroup, category, prompt, answer }))).onConflictDoNothing();
-  const code = process.env.ACCESS_CODE;
-  if (!code) throw new Error("ACCESS_CODE مطلوب لتشغيل البذر.");
-  await db.insert(accessCodes).values({ code, label: "كود الدخول الرئيسي", maxUses: 1 }).onConflictDoNothing({ target: accessCodes.code });
+  const codes = [
+    { code: "VIP-2026", label: "كود دخول VIP", maxUses: 1 },
+    { code: "STUDENT-01", label: "طالب 01", maxUses: 1 },
+    { code: "STUDENT-02", label: "طالب 02", maxUses: 1 },
+  ];
+  if (process.env.ACCESS_CODE) codes.push({ code: process.env.ACCESS_CODE, label: "كود الدخول الرئيسي", maxUses: 1 });
+  await db.insert(accessCodes).values(codes).onConflictDoNothing({ target: accessCodes.code });
+  try {
+    await db.insert(questions).values(sampleQuestions.map(([competition, ageGroup, category, prompt, answer]) => ({ competition, ageGroup, category, prompt, answer }))).onConflictDoNothing();
+  } catch (error) {
+    console.warn("تم بذر أكواد الدخول، لكن مخطط questions الخارجي يتطلب حقولًا إضافية؛ تم تخطي الأسئلة النموذجية.", error);
+  }
   await closeDb();
 }
 
